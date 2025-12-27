@@ -1,0 +1,9 @@
+{
+    "manifest_version": 1,
+    "name": "ComfyUI 插件",
+    "version": "1.0.0",
+    "description": "调用 ComfyUI 工作流生成图片",
+    "author": {
+        "name": "Antigravity"
+    }
+}
