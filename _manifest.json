@@ -9,8 +9,7 @@
     },
     "license": "MIT",
     "host_application": {
-        "min_version": "0.7.0",
-        "max_version": "0.8.0"
+        "min_version": "0.11.0"
     },
     "repository_url": "https://github.com/Rankgice/comfyui-maibot-plugin",
     "keywords": ["ComfyUI","绘图","图片生成"],
