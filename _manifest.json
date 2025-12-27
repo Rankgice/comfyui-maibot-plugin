@@ -4,6 +4,15 @@
     "version": "1.0.0",
     "description": "调用 ComfyUI 工作流生成图片",
     "author": {
-        "name": "Antigravity"
-    }
+        "name": "Rankgice",
+        "url":"https://github.com/Rankgice"
+    },
+    "license": "MIT",
+    "host_application": {
+        "min_version": "0.7.0",
+        "max_version": "0.8.0"
+    },
+    "repository_url": "https://github.com/Rankgice/comfyui-maibot-plugin",
+    "keywords": ["ComfyUI","绘图","图片生成"],
+    "categories": ["Content Generation", "External Integration"]
 }
