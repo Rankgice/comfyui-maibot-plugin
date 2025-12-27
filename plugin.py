@@ -56,6 +56,7 @@ class GenerateImageAction(BaseAction):
             # 1. 加载工作流模板并替换参数
             if not os.path.exists(workflow_file):
                 logger.error(f"GenerateImageAction: 工作流文件不存在: {workflow_file}")
+                await self.send_text(f"图片生成失败：工作流文件不存在 ({workflow_file})")
                 return False, f"工作流文件不存在: {workflow_file}"
             
             logger.debug(f"GenerateImageAction: 正在加载工作流文件: {workflow_file}")
@@ -76,6 +77,7 @@ class GenerateImageAction(BaseAction):
                 workflow = json.loads(workflow_str)
             except json.JSONDecodeError as e:
                 logger.error(f"GenerateImageAction: 解析工作流JSON失败: {e}")
+                await self.send_text(f"图片生成失败：解析工作流配置失败 ({e})")
                 return False, f"解析工作流JSON失败: {e}"
 
             logger.debug(f"GenerateImageAction: 工作流已准备就绪 (Seed={seed})")
@@ -85,6 +87,7 @@ class GenerateImageAction(BaseAction):
             prompt_id = await self._queue_prompt(base_url, workflow)
             if not prompt_id:
                 logger.error("GenerateImageAction: 提交任务失败")
+                await self.send_text("图片生成失败：提交任务给 ComfyUI 失败，请检查服务器是否正常运行。")
                 return False, "提交任务失败"
             
             logger.info(f"GenerateImageAction: 任务提交成功, PromptID={prompt_id}")
@@ -94,6 +97,7 @@ class GenerateImageAction(BaseAction):
             image_filename = await self._poll_history(base_url, prompt_id)
             if not image_filename:
                 logger.error("GenerateImageAction: 生成失败或超时")
+                await self.send_text("图片生成失败：等待结果超时或生成过程中出错。")
                 return False, "生成失败或超时"
             
             logger.info(f"GenerateImageAction: 图片生成成功, Filename={image_filename}")
@@ -124,6 +128,7 @@ class GenerateImageAction(BaseAction):
 
         except Exception as e:
             logger.exception(f"GenerateImageAction: 发生未捕获异常: {e}")
+            await self.send_text(f"图片生成失败：发生内部错误 ({str(e)})")
             return False, f"发生错误: {str(e)}"
 
 
