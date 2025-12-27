@@ -23,10 +23,10 @@
 ## 配置说明
 插件支持通过配置文件（如 `config.toml`）进行如下设置：
 
-| 配置项 | 类型 | 默认值 | 说明 |
-| :--- | :--- | :--- | :--- |
-| `comfyui.base_url` | string | `http://127.0.0.1:8000` | ComfyUI 服务器的基础 URL |
-| `comfyui.workflow_file` | string | `text_to_image_z_image_turbo_api.json` | 工作流文件路径。默认在 `workflow/` 目录下，也支持绝对路径。 |
+| 配置项 | 类型 | 默认值 | 说明                                |
+| :--- | :--- | :--- |:----------------------------------|
+| `comfyui.base_url` | string | `http://127.0.0.1:8000` | ComfyUI 服务器的基础 URL                |
+| `comfyui.workflow_file` | string | `text_to_image_z_image_turbo_api.json` | 工作流文件路径。在 `workflow/` 目录下。 |
 
 ## 工作流准备指南
 为了让插件能够动态修改提示词和随机种子，你需要对 ComfyUI 导出的 API JSON 文件进行微调：
