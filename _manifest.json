@@ -12,6 +12,6 @@
         "min_version": "0.11.0"
     },
     "repository_url": "https://github.com/Rankgice/comfyui-maibot-plugin",
-    "keywords": ["ComfyUI","绘图","图片生成"],
+    "keywords": ["ComfyUI","绘图","图片生成","文生图","图生图"],
     "categories": ["Content Generation", "External Integration"]
 }
