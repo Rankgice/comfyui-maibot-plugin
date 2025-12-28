@@ -64,15 +64,21 @@ class GenerateImageAction(BaseAction):
                     picid = match.group(1)
                     logger.info(f"Extracted picid from context: {picid}")
 
-            if picid:
-                # 只有在明确是图生图，或者当前是文生图但我们想自动切换时才处理
-                # 这里保留自动切换逻辑
-                try:
-                    logger.info(f"🗄️ 尝试从数据库获取图片路径...")
-                    from src.common.database.database_model import Images
+            # 尝试获取图片路径
+            try:
+                from src.common.database.database_model import Images
+                image = None
+                
+                if picid:
+                    logger.info(f"🗄️ 尝试通过 picid 获取图片路径: {picid}")
                     image = Images.get_or_none(Images.image_id == picid)
-                    if image and hasattr(image, 'path') and image.path:
-                        image_path = image.path
+                elif origin_image:
+                    logger.info(f"🗄️ picid为空，尝试通过 description 获取图片路径: {origin_image}")
+                    image = Images.get_or_none(Images.description == origin_image)
+                
+                if image and hasattr(image, 'path') and image.path:
+                    image_path = image.path
+                    try:
                         if os.path.exists(image_path):
                             # 上传图片到 ComfyUI
                             uploaded_filename = await self._upload_image(base_url, image_path)
@@ -83,10 +89,14 @@ class GenerateImageAction(BaseAction):
                                 logger.error("❌ 上传图片失败")
                         else:
                             logger.warning(f"⚠️ 图片文件不存在: {image_path}")
-                except Exception as e:
-                    logger.error(f"❌ 处理图片失败: {e}")
-                    import traceback
-                    logger.error(traceback.format_exc())
+                    except Exception as e:
+                        logger.error(f"❌ 上传图片处理失败: {e}")
+                        import traceback
+                        logger.error(traceback.format_exc())
+            except Exception as e:
+                logger.error(f"❌ 查询数据库失败: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
         
         # 根据类型选择工作流配置
         if image_type == "image_to_image":
@@ -211,7 +221,7 @@ class GenerateImageAction(BaseAction):
             logger.error(f"Queue Prompt Exception: {e}")
         return None
 
-    async def _poll_history(self, base_url: str, prompt_id: str, timeout: int = 60) -> Optional[str]:
+    async def _poll_history(self, base_url: str, prompt_id: str, timeout: int = 90) -> Optional[str]:
         """轮询历史记录获取结果"""
         start_time = time.time()
         url = f"{base_url}/history/{prompt_id}"
