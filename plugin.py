@@ -1,4 +1,5 @@
 import json
+import re
 import base64
 import random
 import time
@@ -26,21 +27,77 @@ class GenerateImageAction(BaseAction):
     activation_type = ActionActivationType.ALWAYS
 
     # === 功能描述 ===
-    action_parameters = {"prompt": "生成图片的提示词"}
+    action_parameters = {
+        "prompt": "生成图片的提示词",
+        "image_type": "画图类型: text_to_image (文生图) or image_to_image (图生图)",
+        "origin_image": "图生图时用到的原图片的完整描述 (可选)"
+    }
     action_require = ["需要生成图片时使用", "用户想要画图时使用"]
     associated_types = ["image", "text"]
 
     async def execute(self) -> Tuple[bool, str]:
         """执行生成图片动作"""
+        logger.info(f"GenerateImageAction Input: message={self.action_message}, data={self.action_data}")
+
+
         prompt_text = self.action_data.get("prompt", "")
         if not prompt_text:
             logger.warning("GenerateImageAction: 没有提供提示词")
             return False, "没有提供提示词"
 
+        # 获取参数
+        image_type = self.action_data.get("image_type", "text_to_image")
+        origin_image = self.action_data.get("origin_image", "")
+
         # 获取配置
         base_url = self.get_config("comfyui.base_url", "http://127.0.0.1:8000")
+
+        # 如果没有提供图片，尝试从上下文提取 (picid)
+        # 逻辑：如果是图生图模式但没图片，或者我们想支持自动检测
+        if image_type == "image_to_image":
+             # 尝试从 processed_plain_text 提取 picid
+            picid = None
+            if hasattr(self, 'action_message') and hasattr(self.action_message, 'processed_plain_text'):
+                text = getattr(self.action_message, 'processed_plain_text', '')
+                match = re.search(r'picid:([a-zA-Z0-9-]+)', text)
+                if match:
+                    picid = match.group(1)
+                    logger.info(f"Extracted picid from context: {picid}")
+
+            if picid:
+                # 只有在明确是图生图，或者当前是文生图但我们想自动切换时才处理
+                # 这里保留自动切换逻辑
+                try:
+                    logger.info(f"🗄️ 尝试从数据库获取图片路径...")
+                    from src.common.database.database_model import Images
+                    image = Images.get_or_none(Images.image_id == picid)
+                    if image and hasattr(image, 'path') and image.path:
+                        image_path = image.path
+                        if os.path.exists(image_path):
+                            # 上传图片到 ComfyUI
+                            uploaded_filename = await self._upload_image(base_url, image_path)
+                            if uploaded_filename:
+                                origin_image = uploaded_filename
+                                logger.info(f"✅ 成功上传图片, Filename: {uploaded_filename}")
+                            else:
+                                logger.error("❌ 上传图片失败")
+                        else:
+                            logger.warning(f"⚠️ 图片文件不存在: {image_path}")
+                except Exception as e:
+                    logger.error(f"❌ 处理图片失败: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+        
+        # 根据类型选择工作流配置
+        if image_type == "image_to_image":
+            workflow_config_key = "comfyui.image_to_image_workflow"
+            default_workflow = "image_to_image_api.json" # 假设默认值
+        else:
+            workflow_config_key = "comfyui.text_to_image_workflow"
+            default_workflow = "text_to_image_z_image_turbo_api.json"
+
         # 默认只写文件名，代码中处理相对路径
-        workflow_filename = "workflow/" + self.get_config("comfyui.workflow_file", "text_to_image_z_image_turbo_api.json")
+        workflow_filename = "workflow/" + self.get_config(workflow_config_key, default_workflow)
 
         # 处理相对路径：如果不是绝对路径，则认为是在插件目录下
         if not os.path.isabs(workflow_filename):
@@ -72,6 +129,12 @@ class GenerateImageAction(BaseAction):
             # ${seed} -> str(seed)
             workflow_str = workflow_template.replace('"${prompt}"', json.dumps(prompt_text))
             workflow_str = workflow_str.replace('"${seed}"', str(seed))
+            
+            # 如果是图生图，替换图片
+            if image_type == "image_to_image":
+                # 假设模板中有 "${image}" 占位符
+                # 使用 json.dumps 确保生成的 JSON 格式正确 (包含引号)
+                workflow_str = workflow_str.replace('"${image}"', json.dumps(origin_image))
             logger.info(f"GenerateImageAction: 请求工作流: {workflow_str}")
             try:
                 workflow = json.loads(workflow_str)
@@ -172,6 +235,38 @@ class GenerateImageAction(BaseAction):
         logger.error(f"Poll History: Timeout after {timeout}s")
         return None
 
+    async def _upload_image(self, base_url: str, image_path: str, subfolder: str = "temp", overwrite: bool = True) -> Optional[str]:
+        """上传图片到 ComfyUI"""
+        url = f"{base_url}/upload/image"
+        try:
+            filename = os.path.basename(image_path)
+            import mimetypes
+            content_type, _ = mimetypes.guess_type(image_path)
+            if not content_type:
+                content_type = 'image/png'
+                
+            data = aiohttp.FormData()
+            data.add_field('image',
+                           open(image_path, 'rb'),
+                           filename=filename,
+                           content_type=content_type)
+            data.add_field('subfolder', subfolder)
+            data.add_field('overwrite', str(overwrite).lower())
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, data=data) as resp:
+                    if resp.status == 200:
+                        result = await resp.json()
+                        if 'name' in result:
+                            return subfolder + "/" + result['name']
+                        else:
+                            logger.error(f"Upload Image: No name in response: {result}")
+                    else:
+                        logger.error(f"Upload Image Failed: Status={resp.status}, Body={await resp.text()}")
+        except Exception as e:
+            logger.error(f"Upload Image Exception: {e}")
+        return None
+
     def _extract_filename(self, task_data: Dict[str, Any]) -> Optional[str]:
         """从历史记录中提取文件名"""
         try:
@@ -200,7 +295,8 @@ class ComfyUIPlugin(BasePlugin):
     config_schema = {
         "comfyui": {
             "base_url": ConfigField(type=str, default="http://127.0.0.1:8000", description="ComfyUI 服务器地址"),
-            "workflow_file": ConfigField(type=str, default="text_to_image_z_image_turbo_api.json", description="工作流文件路径 (相对插件目录或绝对路径)"),
+            "text_to_image_workflow": ConfigField(type=str, default="text_to_image_z_image_turbo_api.json", description="文生图工作流文件路径 (相对插件目录或绝对路径)"),
+            "image_to_image_workflow": ConfigField(type=str, default="image_to_image_api.json", description="图生图工作流文件路径 (相对插件目录或绝对路径)"),
         }
     }
 
